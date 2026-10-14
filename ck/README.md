@@ -9,6 +9,8 @@ them and of Homebrew.
   Qwen3-VL video encoding (upstream PRs #1106, #1107, #1113).
 - `ck/requirements.lock`: every dependency, frozen from the upstream v0.31.0
   Homebrew environment that served correctly before this build existed.
+  `mlx-lm` is the git commit vllm-metal's pyproject pins: PyPI's `mlx-lm 0.32.0`
+  is a different build that needs a newer `mlx`.
 - `ck/build.sh`: fresh venv from the lock, vLLM's CPU wheel (sha256-checked),
   Metal kernels and C++ extension compiled from this source, wheel built,
   checked and installed, upstream's smoke test run. Needs Xcode's Metal toolchain.
