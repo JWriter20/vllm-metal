@@ -118,6 +118,42 @@ def test_punica_handles_fragmented_routing() -> None:
     )
 
 
+def test_punica_decode_batch_does_not_gather_weights_per_row(monkeypatch) -> None:
+    """Decode rows sharing an adapter run one matmul pair, not a weight copy
+    per row: per-row gathers cost rows x (in + out) x rank on every wrapped
+    layer and made LoRA decode at 48 requests 83% slower than the base model.
+    """
+    wrapper = punica_mod.PunicaWrapperMLX(
+        max_num_batched_tokens=4, max_batches=4, max_loras=2
+    )
+    wrapper.update_metadata(
+        LoRAMapping(
+            index_mapping=(11, 11, 22, 11),
+            prompt_mapping=(11, 11, 22, 11),
+            is_prefill=False,
+        ),
+        lora_index_to_id=[11, 22],
+    )
+    a_stacked = mx.array(np.array([[[1.0, 0.0]], [[0.0, 1.0]]], dtype=np.float32))
+    b_stacked = mx.array(np.array([[[1.0]], [[10.0]]], dtype=np.float32))
+    gathered_rows: list[int] = []
+    real_take = mx.take
+
+    def spy_take(a, indices, axis=None):
+        if axis == 0 and a.ndim == 3:
+            gathered_rows.append(int(indices.shape[0]))
+        return real_take(a, indices, axis=axis)
+
+    monkeypatch.setattr(punica_mod.mx, "take", spy_take)
+
+    out = wrapper.add_lora_linear(
+        mx.zeros((4, 1)), mx.ones((4, 2)), a_stacked, b_stacked, scale=1.0
+    )
+
+    np.testing.assert_array_equal(np.array(out).flatten(), [1, 1, 10, 1])
+    assert gathered_rows == []
+
+
 def test_punica_mixed_decode_prefill_does_not_gather_weights_per_row(
     monkeypatch,
 ) -> None:
