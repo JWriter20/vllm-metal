@@ -7,6 +7,8 @@ them and of Homebrew.
 - Base: upstream `v0.31.0`.
 - Fixes on top: mixed decode+prefill LoRA routing, `--enable-tower-connector-lora`,
   Qwen3-VL video encoding (upstream PRs #1106, #1107, #1113).
+- Performance: batched M-RoPE for packed batches, LoRA decode grouped by adapter
+  (no per-row weight gathers). Serving sets `VLLM_METAL_NATIVE_SAMPLING=1`.
 - `ck/requirements.lock`: every dependency, frozen from the upstream v0.31.0
   Homebrew environment that served correctly before this build existed.
   `mlx-lm` is the git commit vllm-metal's pyproject pins: PyPI's `mlx-lm 0.32.0`
