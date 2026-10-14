@@ -1,0 +1,19 @@
+# ck/main
+
+Our own build of vllm-metal: an upstream release plus our fixes, built from
+source and served from a pinned environment, independent of upstream merging
+them and of Homebrew.
+
+- Base: upstream `v0.31.0`.
+- Fixes on top: mixed decode+prefill LoRA routing, `--enable-tower-connector-lora`,
+  Qwen3-VL video encoding (upstream PRs #1106, #1107, #1113).
+- `ck/requirements.lock`: every dependency, frozen from the upstream v0.31.0
+  Homebrew environment that served correctly before this build existed.
+- `ck/build.sh`: fresh venv from the lock, vLLM's CPU wheel (sha256-checked),
+  Metal kernels and C++ extension compiled from this source, wheel built,
+  checked and installed, upstream's smoke test run. Needs Xcode's Metal toolchain.
+- `ck/activate.sh <version>`: points the services at a build and restarts them.
+
+To move to a new upstream release: rebase our fixes onto the new tag, refresh
+the lock from that release's environment, bump the `+ckN` version, build,
+validate, activate.
