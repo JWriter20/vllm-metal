@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """MLX PunicaWrapper — route LoRA deltas by adapter slot.
 
-Prefill batches avoid per-token weight expansion; decode keeps the compact
-batched path that works best for small token counts.
+Batches with prefill tokens avoid per-token weight expansion; pure decode keeps
+the compact batched path that works best for small token counts.
 """
 
 from __future__ import annotations
@@ -36,7 +36,12 @@ class PunicaWrapperMLX:
         slot_of = {aid: i for i, aid in enumerate(lora_index_to_id) if aid is not None}
         self._num_tokens = len(mapping.index_mapping)
 
-        if not mapping.is_prefill:
+        # The compact path gathers a weight copy per row, which is only bounded
+        # when every row is its own decode request; a decode batched with a
+        # prefill chunk would copy weights for every prompt token.
+        if not mapping.is_prefill and len(mapping.index_mapping) == len(
+            mapping.prompt_mapping
+        ):
             null_slot = self.max_loras
             token_slots = [
                 slot_of.get(adapter_id, null_slot)
