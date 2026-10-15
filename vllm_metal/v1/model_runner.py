@@ -776,10 +776,20 @@ class MetalModelRunner:
     ) -> EncoderLoRATarget | None:
         """Resolve the encoder for tower/connector LoRA, as upstream's
         ``LoRAModelManager._maybe_init_mm`` gates it."""
+        if lora_config is None:
+            return None
         adapter = self._multimodal_adapter
-        if lora_config is None or (
-            adapter is None and not self.model_config.is_multimodal_model
-        ):
+        if adapter is None:
+            # Metal serves this model without its vision encoder: a text
+            # model, a VLM forced text-only (``multimodal_config`` cleared, so
+            # ``is_multimodal_model`` is false) or a language-model-only load.
+            if lora_config.enable_tower_connector_lora:
+                logger.warning(
+                    "`enable_tower_connector_lora` has no effect: %s is served "
+                    "without a vision encoder on Metal, so LoRA applies to the "
+                    "language model only.",
+                    self.model_config.model,
+                )
             return None
         target = getattr(adapter, "lora_encoder_target", None)
         if not lora_config.enable_tower_connector_lora:
@@ -789,12 +799,6 @@ class MetalModelRunner:
                     "please set `enable_tower_connector_lora=True`.",
                     self.model_config.model,
                 )
-            return None
-        if adapter is None:
-            logger.warning(
-                "Disabling `enable_tower_connector_lora` because the multimodal "
-                "model is configured to initialize the language model only."
-            )
             return None
         if target is None:
             logger.warning(
