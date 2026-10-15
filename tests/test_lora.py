@@ -1722,6 +1722,52 @@ def test_manager_encoder_adapter_applies_to_every_encoder_row() -> None:
     np.testing.assert_allclose(np.array(encoder.fc1(x)), np.zeros((3, 2)))
 
 
+def test_adapter_churn_does_not_accumulate_buffers_in_idle_encoder() -> None:
+    """Slot writes must not pile up on a module that does not run between
+    them. Text-only steps never run the encoder, yet every activation rewrites
+    its slot; left lazy, each write keeps the previous chain and its buffers
+    alive, until Metal's live-buffer limit fails an allocation."""
+    import gc
+
+    language_model, encoder = _TwoLinearModel(), _TwoLinearModel()
+    manager = model_manager_mod.MLXLoRAModelManager(
+        model=language_model,
+        lora_config=_lora_config_stub(max_loras=1, max_lora_rank=1, max_cpu_loras=2),
+        max_num_seqs=1,
+        max_num_batched_tokens=4,
+        dtype=mx.float32,
+        encoder=model_manager_mod.EncoderLoRATarget(module=encoder, prefix="visual."),
+    )
+    for lora_id in (1, 2):
+        manager.add_adapter(
+            _make_adapter(
+                lora_id, fc1_a=np.array([[1.0, 0.0]]), fc1_b=np.array([[1.0], [0.0]])
+            )
+        )
+    x = mx.array([[1.0, 0.0]])
+
+    def churn(cycles: int) -> None:
+        for _ in range(cycles):
+            for lora_id in (1, 2):
+                manager.activate_adapter(lora_id)
+                manager.set_adapter_mapping(
+                    LoRAMapping(index_mapping=(lora_id,), prompt_mapping=(lora_id,))
+                )
+                mx.eval(language_model(x))  # text-only step: encoder idle
+
+    def live_bytes() -> int:
+        mx.synchronize()
+        gc.collect()
+        mx.clear_cache()
+        return mx.get_active_memory()
+
+    churn(5)
+    before = live_bytes()
+    churn(100)
+
+    assert live_bytes() == before
+
+
 def test_manager_deactivation_clears_encoder_routing() -> None:
     """An evicted slot must not keep feeding the encoder stale weights."""
     manager, _, encoder = _make_encoder_manager()
