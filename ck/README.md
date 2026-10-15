@@ -9,6 +9,10 @@ them and of Homebrew.
   Qwen3-VL video encoding (upstream PRs #1106, #1107, #1113).
 - Performance: batched M-RoPE for packed batches, LoRA decode grouped by adapter
   (no per-row weight gathers). Serving sets `VLLM_METAL_NATIVE_SAMPLING=1`.
+- ck3: LoRA slot writes are evaluated eagerly. Before this, text-only adapter churn
+  leaked Metal buffers in the idle vision encoder until `[metal::malloc] Resource
+  limit (499000) exceeded`. Also: M-RoPE goes through `rotary_emb.apply_rotary`
+  (mlx-vlm's fused kernel), and a warning when the tower LoRA flag has no effect.
 - `ck/requirements.lock`: every dependency, frozen from the upstream v0.31.0
   Homebrew environment that served correctly before this build existed.
   `mlx-lm` is the git commit vllm-metal's pyproject pins: PyPI's `mlx-lm 0.32.0`
