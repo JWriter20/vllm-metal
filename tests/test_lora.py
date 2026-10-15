@@ -1769,3 +1769,35 @@ def test_runner_gates_tower_connector_lora_like_upstream(
     resolved = runner._lora_encoder_target(lora_config)
 
     assert resolved is (target if expect_target else None)
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_runner_text_only_vlm_tower_connector_flag_has_no_effect(
+    enabled: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A VLM that Metal forces text-only has its ``multimodal_config`` cleared:
+    no multimodal adapter and ``is_multimodal_model`` false. The flag must warn
+    that it does nothing, and LoRA must wrap only the language model."""
+    runner = make_stub_runner(
+        _multimodal_adapter=None,
+        model_config=SimpleNamespace(model="vlm", is_multimodal_model=False),
+    )
+    lora_config = _lora_config_stub(max_loras=1, max_lora_rank=1)
+    lora_config.enable_tower_connector_lora = enabled
+
+    with caplog.at_level("WARNING", logger=model_runner_mod.__name__):
+        encoder = runner._lora_encoder_target(lora_config)
+
+    assert encoder is None
+    warned = "`enable_tower_connector_lora` has no effect" in caplog.text
+    assert warned is enabled
+
+    manager = model_manager_mod.MLXLoRAModelManager(
+        model=_TwoLinearModel(),
+        lora_config=lora_config,
+        max_num_seqs=1,
+        max_num_batched_tokens=4,
+        dtype=mx.float32,
+        encoder=encoder,
+    )
+    assert set(manager.modules) == {"fc1", "fc2"}
