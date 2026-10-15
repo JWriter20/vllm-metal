@@ -277,6 +277,7 @@ class MLXLoRAModelManager:
             self.encoder_punica_wrapper.set_slot(None)
         for w in self.modules.values():
             w.reset_lora(slot)
+        self._materialize_slots()
         self._last_mapping = None
         return True
 
@@ -389,8 +390,28 @@ class MLXLoRAModelManager:
                 continue
             lora_a, lora_b, rank = weights
             module.set_prepared_lora(slot, lora_a, lora_b, rank=rank)
+        self._materialize_slots()
         self.lora_index_to_id[slot] = lora_id
         self._last_mapping = None
+
+    def _materialize_slots(self) -> None:
+        """Schedule pending slot writes for evaluation now.
+
+        A slot write is a lazy MLX update of the module's stacked weights. A
+        wrapped module that does not run before its next write, such as the
+        multimodal encoder during text-only steps, would chain every write
+        onto the previous one and keep the buffers each write captured alive.
+        Under adapter churn that grows the process's live Metal buffer count
+        until allocation fails. ``async_eval`` resolves the chain without
+        waiting for an in-flight forward.
+        """
+        mx.async_eval(
+            [
+                stacked
+                for module in self.modules.values()
+                for stacked in (module.lora_a_stacked, module.lora_b_stacked)
+            ]
+        )
 
 
 def _lookup_weights_for_module(
